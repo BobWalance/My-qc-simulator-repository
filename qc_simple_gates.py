@@ -1,6 +1,8 @@
 
 import numpy as np
 import math
+import cmath
+
 # GATE CREATION (single qubit gates)
 #  A given controlled gate shall occupy on gate time to itself (for simplicity)
 #  In Python, the imaginary number "i" is denoted as "1j"
@@ -25,10 +27,22 @@ z = np.array ([[1,0],[0,-1]])
 # Phase (S or P) gate -- "s" is used on IBM's Quantum Composer
 s = np.array ([[1,0],[0,1j]])
 p = np.array ([[1,0],[0,1j]])
-#
-#
-#
 
+# RBW 5-4-2022
+t =  np.array ([[1,0],[0,cmath.exp(1j*math.pi/4)]]) # pi/4 rotation about the Z axis
+#
+# RBW 4-3-2022
+# The 'px' gate is defined as it's used in the top-level file
+# The 'px' gate is a phase gate with user-supplied phase. Specifically, the divisor of pi will be supplied by the user.
+# For example:
+# "p2" will be e**(pi*i/2) for a phase of pi/2
+# "p4" will be e**(pi*i/4) for a phase of pi/4
+# "p-2" will be e**(-pi*i/2) for a phase of -pi/2 which is the same as 3*pi/2
+
+# 
+# 
+# 
+# 
 # GATE CREATION (full matrices that span all basis states)
 #  NOT USED ANYMORE - the oracle matrix '0[]' is automatically created
 #

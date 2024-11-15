@@ -1,3 +1,32 @@
+# RBW - 9-13-2024 - Calling MyCalculateAndDisplayQubitsEntanglement() instead of CalculateAndDisplayQubitsEntanglement()
+#                    so that ptrace_outer is no longer needed.
+# RBW - 6-21-2022 - Implemented ptrace_outer locally in qc_functions.py rather than depending on 'from partial_trace_from_statevector import ptrace_outer'.
+#                   Qutip no longer required.
+# RBW - 6-11-2022 - Displaying histograms for Grovers initialized and first Hadamarized states.
+# RBW - 5-15-2022 - Printing the number of qubits as the Grovers measurements proceed.
+# RBW - 5-14-2022 - Added ability for user to select how many qubits are involved in Grovers algorithm.
+# RBW - 5-13-2022 - Grover's algorithm now only plots the histogram of the measurements.
+# RBW - 5-12-2022 - Histograms for the Grover's measurements are now shown when not plotting the calculated probabilities.
+# RBW - 5-07-2022 - Simplified call to Grovers. User input prompt to continue Grover's looping fixed.
+# RBW - 5-06-2022 - Cleaned up a bit more. Moved the Grover's gates to qc_grovers.py. Created separate qc_grovers.py and qc_functions.py files.
+# RBW - 5-04-2022 - Added the T gate to qc_simple_gates.py.
+# RBW - 5-01-2022 - Improved the output text for Grover's.
+# RBW - 4-30-2022 - Added ability to show simulated basis-state measurements.
+# RBW - 4-16-2022 - QFT32 results look correct when using 1's and 0s within their forced initial state vectors.
+#                   The IBM simulator has qubit 0 on the top. I've put the KRON arguments order back to original so that my qubit 0 is at the top as IBM's is.
+#                   To make the QFT work, I had to reverse the qubit order top-to-bottom. Now all is well with other types of gates, too.
+#                   Needs cleanup.
+# RBW - 4-15-2022 - Reversing all the KRON arguments. This broke the qubit order with respect to the IBM simulator.
+#                   Working on the QFT4 and various input vectors.
+# RBW - 4-9-2022 -  Implemented SWAP gates with 3xCNOT gates in qc_algorithms.py.
+#                   Added 5 qubit inverse Quantum fourier transform to qc_algorithms.py. Still have equal superposition with iixxi type inputs (no surprise).
+# RBW - 4-8-2022 -  Rearranged the QFT gates to make it easier to read and to expand to more qubits.
+# RBW - 4-5-2022 -  Creating an initial qubit pattern and observing results on the 5 qubit QFT. ihhhh and hiiii are interesting.
+
+# RBW - 4-4-2022 -  Trying a quantum Fourier transform with 5 qubits. This results in equal probabilities on all basis states.
+# RBW - 4-4-2022 -  The controlled "px" gate seems to be working.
+# RBW - 4-3-2022 -  Having trouble feeding phasePiDivisor to the generic "px" gate that was in qc_simple_gates. Had to create it where needed.
+# RBW - 4-3-2022 -  Starting work on Shor's algorithm. Adding phase gates needed for the quantum Fourier transform.
 # RBW - 3-30-2022 - This version shared on physicsforums.com.
 # RBW - 3-29-2022 - Added ability for user to select Grover's or other algorithm.
 # RBW - 3-28-2022 - Made the plot size larger. Displaying the qubits entanglements for all stages of Grover's algorithm.
@@ -31,22 +60,15 @@
 # RBW - 5-7-2021 - Had the tensor (kronecker) product arguments reversed. Added x,y,z,p gates.
 # RBW - 5-6-2021 - qc_sim_1.py
 #  This is the top-level quantum computer simulator file
-
 import numpy as np
-import math
 import matplotlib.pyplot as plt
-#
-#import all of the qc modules
-from qc_controlled_gates import controlled_gate_generator
+
+from qc_controlled_gates import *
 from qc_simple_gates import *
 from qc_algorithms import *
+from qc_grovers import *
+from qc_functions import *
 #
-# 'qutip' is needed for the partial trace calculations used in generating the qubit entanglement values.
-# qutip installation is much easier than older versions:
-#  pip install qutip
-from partial_trace_from_statevector import ptrace_outer
-from partial_trace_from_statevector import partial_trace_orig # this version is just used for testing
-
 # Notes on Python lists
 # 2D list example (use this format for multi-qubit gates list):
 # test = [
@@ -75,225 +97,78 @@ from partial_trace_from_statevector import partial_trace_orig # this version is 
 ############################
 # GLOBAL VARIABLES
 ############################
-runGroversAlgorithm = False
-plotProbabilitiesForAllGroversLoops = False # this will be used to determine if the user wants each Grover's loop stateVector to be plotted
-
-
-
-
-############################
-# SUBROUTINES
-############################
-def ControlledGateParser(gatesToProcess,numQubits,gateNumber):
-    # This routine will be called at the beginning of every gate time in order to check
-    #  if there is a controlled gate in that gate time
-    #
-    # first, loop through this gate time (a particular column in the gates list) to see if there is a control or controls
-    controlQubits = [] # 3-23-2022 will hold a list of the control qubits (zero-based) for a given gate time
-    for qubitNumber in range(numQubits):
-        gateType = gatesToProcess[qubitNumber][gateNumber]
-        if gateType == 'C':
-            # control gate detected
-            controlQubits.append(qubitNumber) # 3-23-2022 save the control qubit numbers associtated with the found control gate
-    # done searching for control gate(s)
-    
-    if len(controlQubits) == 0:
-        # Must now create a zero'd np.array to return
-        #  to indicate to calling routine that a controlled gate
-        #  was NOT found in this particular gate time
-        mt = np.array([0])
-        return mt # no control gates detected, so this is not a controlled-gate gate time
-    #    
-    # Here because this pate time DOES contain a controlled gate
-    # Loop through this gate time to find the type of target gate
-    for qubitNumber in range(numQubits):
-        gateType = gatesToProcess[qubitNumber][gateNumber]
-        if gateType == 'x':
-            # 'x' type of target gate was found
-            # note that controlQubits list and qubitNumber are 'zero-based'
-            cnotMatrix = controlled_gate_generator('x', numQubits , controlQubits , qubitNumber) # 3-23-2022 controlQubits is a list of the qubit numbers of all the controls
-            return cnotMatrix
-        if gateType == 'z':
-            # 'z' type of target gate was found
-            # note that controlQubits and qubitNumber are 'zero-based'
-            czMatrix = controlled_gate_generator('z', numQubits , controlQubits , qubitNumber) # 3-23-2022 controlQubits is a list of the qubit numbers of all the controls
-            return czMatrix
-#
-#
-
-def PlotStateVector(stateVector,numberOfQubits,plotTitle): # plot the probabilities of the final stateVector
-
-    probabilityMagnitude = np.conj(stateVector) * stateVector # calculate the probability magnitudes for all ofthe basis states
-
-    probabilityMagnitude = probabilityMagnitude.real # this is done to remove warning in plt.bar - matplotlib warning ("ComplexWarning: Casting complex values to real discards..."
-
-    plt.bar(list(range(2**numberOfQubits)),np.asarray(probabilityMagnitude.flatten())) # default width, and must convert the probabilityMagnitude to a 1D array for the plt.bar function
-
-    plt.xticks(np.arange(2**numberOfQubits)) # this done so that the 'x' ticks and labels are one per basis state, but SLOWS plotting greatly
-                                             #  when processing more than 8 qubits
-    plt.yticks(np.arange( 0 , 1.1 , 0.1 )) # this done to keep the 'y' max tick always at 1
-
-    plt.ylabel('probability')
-    plt.xlabel('basis state')
-    
-    plt.suptitle(plotTitle, fontsize=20)
-    
-    plt.gcf().set_size_inches(16, 14)
-
-def CalculateAndDisplayQubitsEntanglement(numberOfQubits,stateVector):
-    for val in range(0,numberOfQubits):
-        # NOTE that the qubit order is reversed (from mine) in the ptrace_outer routine.
-        # That is my 0th qubit is ptrace_outer's highest-numbered qubit
-        pt = ptrace_outer(stateVector,[(numberOfQubits-1)-val],[2]*numberOfQubits) # feed this routine the stateVector
-
-        # take the trace of the square of the partial trace, then round it to one decimal place
-        entanglementValue = round(np.trace(np.dot(pt,pt)),1)
-        
-        print("entanglementValue for qubit",val," = ",entanglementValue)
-
-    # HOW TO USE ptrace_outer):
-    # def ptrace_outer(u, keep, dims, optimize=False):
-    #     """Calculate the partial trace of an outer product
-    # 
-    #     ρ_a = Tr_b(|u><u|)
-    # 
-    #     Parameters
-    #     ----------
-    #     u : array
-    #         Vector to use for outer product
-    #     keep : array
-    #         An array of indices of the spaces to keep after
-    #         being traced. For instance, if the space is
-    #         A x B x C x D and we want to trace out B and D,
-    #         keep = [0,2]
-    #     dims : array
-    #         An array of the dimensions of each space.
-    #         For instance, if the space is A x B x C x D,
-    #         dims = [dim_A, dim_B, dim_C, dim_D]
-    # 
-    #     Returns
-    #     -------
-    #     ρ_a : 2D array
-    #         Traced matrix
-    #     """
-    #
-
-def MainLoopProcessor(gatesToProcess,numberOfQubits,numberOfGateTimes,stateVector,O):
-    # The main loop processing code:
-    #
-    for gateTimeIndex in range(numberOfGateTimes):
-        qubitIndex = 0
-        # first, check to see if this gate time contains a control gate
-        vectorEvolvingMatrix = ControlledGateParser(gatesToProcess,numberOfQubits,gateTimeIndex)
-    #    print("vectorEvolvingMatrix (after ControlledGateParser = \n",vectorEvolvingMatrix) # TESTING
-        if vectorEvolvingMatrix.any():
-            dummy = 0 # needed to satisfy an otherwise empty 'if' condition
-            # this gate time contained a controlled gate, so the matrix for this gate time is available
-        else :
-            # since the qubits in this gate time did not contain a controlled gate, create the vector-evolving matrix for this gate time
-            # begin with the top (zeroth) qubit at this gate time index
-            vectorEvolvingMatrix = eval(gatesToProcess[qubitIndex][gateTimeIndex])           
-            # The vectorEvolvingMatrix now has the first matrix found in the top qubit for this gate time
-            #          
-            if (gatesToProcess[qubitIndex][gateTimeIndex] == "O"):
-                # A Grover's oracle has been found. Do not tensor-in any other matrices.
-                dummy = 0; # this is needed because no other work is done here
-            else:
-                # tensor all qubits that might be beyond the zeroth qubit (for this gate time)
-                for nq in range(numberOfQubits-1):
-                    qubitIndex = qubitIndex + 1 # point to the next-higher qubit (the zeroth qubit has already been tensored into the matrix
-                    vectorEvolvingMatrix = np.kron(eval(gatesToProcess[qubitIndex][gateTimeIndex]),vectorEvolvingMatrix)           
-        # The vector-evolving matrix was created by the controlled-gate parser, or it has already been fully tensored together for this gate time,
-        #  so now it's time to multiply this matrix into the state vector.
-        stateVector = np.dot(vectorEvolvingMatrix,stateVector)
-        #print ("stateVector =\n",stateVector) # TESTING
-        #
-    return stateVector
-############################
-# end of SUBROUTINES
-############################
-#
-#
+measurementShots = 100 # the number of measurements to perform
 #
 ####################################################################################
 #                         MAIN CODE
 ####################################################################################
 print ("Processing started...")
 #
-userInput = input("Do Grover's algorithm? (y then Enter for YES)")
-if userInput == "y":
+userInput = input("Do Grover's algorithm? (ENTER for YES, or 'any key'+ ENTER for NO)")
+if userInput == "":
     runGroversAlgorithm = True
-    userInput = input("Plot the state vector probabilities after each Grover's loop? (y then Enter for YES)")
-    if userInput == "y":
-        plotProbabilitiesForAllGroversLoops = True
-#
-if runGroversAlgorithm:
-    numberOfQubits = len(groversInit)
 else:
-    numberOfQubits = len(gates)
+    runGroversAlgorithm = False
 #
-# create the first state vector to include all qubits
-stateVector = np.array([[1],[0]]) # This is the starting state vector for one qubit.
+#------------------------------------------------------------------------------------
+# TESTING QFT -- BE SURE TO COMMENT ANY OF THESE FORCED INITIAL STATE VECTORS IF DOING GROVER'S ALGORITHM
+#------------------------------------------------------------------------------------
+# RBW 4-15-2022 TESTING the forcing of the initial stateVector for the QFT4 and QFT32 routines
+# stateVector = .500*np.array([[1],[1],[1],[1]])
+# stateVector = 1.00*np.array([[0],[1],[0],[0]])
+# stateVector = 1.00*np.array([[1],[0],[0],[0]])
+
+# stateVector = .707*np.array([[0],[1],[0],[1]]) # RBW 4-16-2022 - trying this in reverse order since I put the KRON arguments back to stock to meet 'IBM's qubit 0 on the top'
+#stateVector = .707*np.array([[1],[0],[1],[0]]) # RBW 4-16-2022 - back to normal order. This seems to work the same as reverse order in its final-state probabilities.
+#stateVector = .707*np.array([1,0,1,0]) # RBW 4-16-2022 - back to normal order. This seems to work the same as reverse order in its final-state probabilities.
+
+# 4-16-2022 - a normalization factor of 1/sqrt(120) makes for too-big probabilities when using the 1,2,4,8 sequence. Not sure why.
+#stateVector = (1/math.sqrt(120))*np.array([1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8]) # RBW 4-16-2022 - QFT32 initial stateVector of (1,2,4,8...).
+#stateVector = (1/math.sqrt(600))*np.array([1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8]) # RBW 4-16-2022 - QFT32 initial stateVector of (1,2,4,8...).
+#stateVector = (1/math.sqrt(120))*np.array([[1],[2],[4],[8],[1],[2],[4],[8],[1],[2],[4],[8],[1],[2],[4],[8],[1],[2],[4],[8],[1],[2],[4],[8],[1],[2],[4],[8],[1],[2],[4],[8]]) # RBW 4-16-2022 - QFT32 initial stateVector of (1,2,4,8...).
+#stateVector = 0.091*np.array([1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8,1,2,4,8]) # RBW 4-16-2022 - QFT32 initial stateVector of (1,2,4,8...).
+
+# stateVector = (1/math.sqrt(16))*np.array([1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0]) # RBW 4-16-2022 - QFT32 initial stateVector (period=2).
+# #stateVector = (1/math.sqrt(16))*np.array([1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0]) # RBW 4-16-2022 - QFT32 initial stateVector (period=8).
+# stateVector = (1/math.sqrt(16))*np.array([1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0]) # RBW 4-16-2022 - QFT32 initial stateVector (period=4).
+# stateVector = (1/math.sqrt(16))*np.array([1,1,0,0,-1,-1,0,0,1,1,0,0,-1,-1,0,0,1,1,0,0,-1,-1,0,0,1,1,0,0,-1,-1,0,0]) # RBW 4-17-2022 - QFT32 initial stateVector (period=4). Removing the DC.
 #
-v1 = np.array([[1],[0]])
-for nq in range(numberOfQubits-1):
-    stateVector=np.kron(v1,stateVector) # lengthen the initial state vector with the next qubit
-# The initial state vector is now 2**numberOfQubits in size with basis state 0's amplitude equal to 1.
+# print("TESTING my initial stateVector =\n",stateVector) # TESTING
 #
+
 if runGroversAlgorithm:
-    # Create a NxN marked matrix for use as the oracle when executing Grover's algorithm
-    O = i # 'i' is the one-qubit identity matrix
-    for n in range(numberOfQubits-1):
-        O = np.kron(i,O)
-    # now mark a random basis state for the Grover's algorithm to find
-    basisStateMarker = math.floor((np.random.random(1)[0])*2**numberOfQubits)
-    O[[basisStateMarker],[basisStateMarker]] = -1
-    print ("\nThe basis state marked in the Grover's oracle was",basisStateMarker)
-    #
-    # Process the Hadamard initialization gate(s) and plot the stateVector probabilities after this initialization
-    gatesToProcess = groversInit # Hadamard initialization for the Grover's algorithm
-    numberOfGateTimes = len(gatesToProcess[0])
-    numLoops = math.floor(np.sqrt(2**numberOfQubits)) # This is the most number of times through the loop -- referred to as 'O(sqrt(N))'
-    stateVector = MainLoopProcessor(gatesToProcess,numberOfQubits,numberOfGateTimes,stateVector,O)
-    print ("\nQubits entanglement after the Hadamard initialization:")
-    CalculateAndDisplayQubitsEntanglement(numberOfQubits,stateVector) # calculate and display the qubits entanglement after Hadamard initialization in Grover's algorithm
-    #
-    if plotProbabilitiesForAllGroversLoops:
-        PlotStateVector(stateVector,numberOfQubits,"After the Hadamard initialization - using matrix 'groversInit[]'") # plot the probabilities of this stateVector
-        plt.show(block=False) # display the plot
-        plt.pause(3) # display the plot for a short time before closing it
-        print ("") # needed for the plot to appear - not sure why this is
-        plt.close()
-        #
-    # Process the repeating gate(s) in Grover's algorithm and plot the stateVector probabilities for each loop
-    for n in range(numLoops):
-        numberOfGateTimes = len(groversGates[0])
-        gatesToProcess = groversGates
-        numberOfGateTimes = len(gatesToProcess[0])
-        stateVector = MainLoopProcessor(gatesToProcess,numberOfQubits,numberOfGateTimes,stateVector,O)
-        print ("\nQubits entanglement after Grover's loop " + str(n+1) + " of " + str(numLoops) + ":")
-        CalculateAndDisplayQubitsEntanglement(numberOfQubits,stateVector) # calculate and display the qubits entanglement after each Grover's loop
-    #
-        if plotProbabilitiesForAllGroversLoops & (n < numLoops-1):
-            PlotStateVector(stateVector,numberOfQubits,"Grover's loop "+ str(n+1) + " of " + str(numLoops) + " using matrices 'groversInit[]' and 'groversGates[]'") # plot the probabilities of this stateVector
-            plt.show(block=False) # display the plot
-            plt.pause(3) # display the plot for a short time before closing it
-            print ("") # needed for the plot to appear - not sure why this is
-    #        if (n != numLoops-1):
-            plt.close()
-    #
-    PlotStateVector(stateVector,numberOfQubits,"Grover's loop "+ str(numLoops) + " of " + str(numLoops) + " using matrices 'groversInit[]' and 'groversGates[]'") # plot the probabilities of the final stateVector of Grover's algorithm
-    plt.show(block=False) # display the plot
-    #
+    Grovers(measurementShots)
+#
 else: # we're here because we are NOT running Grover's algorithm
+    numberOfQubits = len(gates) 
+    stateVector = CreateInitialStateVector(numberOfQubits)
+    # The initial state vector is now 2**numberOfQubits in size with basis state 0's amplitude equal to 1.
     gatesToProcess = gates
     numberOfGateTimes = len(gatesToProcess[0])
-    O = [] # set this to zero length since it's not used in a non-Grovers calculation
+    
+    O = [''] # set this oracle to zero length since it's not used in a non-Grovers calculation
     stateVector = MainLoopProcessor(gatesToProcess,numberOfQubits,numberOfGateTimes,stateVector,O)
-    CalculateAndDisplayQubitsEntanglement(numberOfQubits,stateVector) # calculate and display the qubits entanglement after each Grover's loop
+
+    # 9-13-2024 -- THIS ROUTINE IS NO LONGER NEEDED
+    ##print("\n")
+    ##CalculateAndDisplayQubitsEntanglement(numberOfQubits,stateVector) # calculate and display the qubits entanglement for this (non-Grover's) algorithm
+    ##print("\n")
+
+    # RBW 9-12-2024
+    print("\n")
+    MyCalculateAndDisplayQubitsEntanglement(stateVector) # calculate and display the qubits entanglement for this (non-Grover's) algorithm
+    print("\n")
+
+
+
+    print ("final stateVector (not Grover's algorithm) =\n",stateVector) # TESTING
+    
+    print ("\nBasis-state measurements:")
+    Measure(stateVector,numberOfQubits,measurementShots) # RBW 4-28-2022
+
     PlotStateVector(stateVector,numberOfQubits,"QC - using matrix 'gates[]'") # plot the probabilities of the final stateVector
     plt.show(block=False) # display the plot
-
+    
 ############################
 #  end of MAIN CODE
 ############################

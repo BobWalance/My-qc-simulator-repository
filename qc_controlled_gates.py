@@ -14,20 +14,37 @@
 # The matrix created will be of the identity type with modifications.
 
 import numpy as np
+import math
+import cmath
 
 def controlled_gate_generator(gateType, numberOfQubits , controlQubits , targetQubit ):
 #
 # NOTE that controlQubits and targetQubit are 'zero-based'
 #
     N = 2**numberOfQubits
-    gateMatrix = np.zeros((N,N)) # create an NxN matrix stuffed full of zeros
+    
+    
+    # RBW 4-16-2022 TESTING
+#     print ("\ncontrolled_gate_generator TESTING")
+#     print("gateType = ",gateType)
+#     print("numberOfQubits = ",numberOfQubits)
+#     print("controlQubits = ",controlQubits)
+#     print("targetQubit = ",targetQubit)
+#     print("\n")
+    
+    
+    
+    
+    #gateMatrix = np.zeros((N,N)) # create an NxN matrix stuffed full of zeros
+    gateMatrix = np.zeros((N,N),dtype=np.complex_) # 4-3-2022 create an NxN matrix stuffed full of zeros and of type complex
 
     maxQubitsAllowed = 13 # 2**13 is largest 2x2 matrix allowed by Python
 
     # first, checkfor argument errors
     if numberOfQubits > maxQubitsAllowed :
         print ("ERROR - the number of qubits is larger than", maxQubitsAllowed)
-        return cnotMatrix
+#        return cnotMatrix
+        return gateMatrix # 5-5-2022
     if len(controlQubits) > maxQubitsAllowed-1 :
         print ("ERROR - the number of controlQubits is larger than numberOfQubits-1")
         return gateMatrix
@@ -73,12 +90,17 @@ def controlled_gate_generator(gateType, numberOfQubits , controlQubits , targetQ
 #
         controlQubitsComposite = 0
         for cQ in controlQubits:
+            #print ("cQ= ",cQ) # TESTING
             controlQubitsComposite |= 1<<(cQ) # 'or-in' all the control qubit positions
         targetQubitAddress = 1 << (targetQubit)
-        #print ("TESTING controlQubitsComposite = ", controlQubitsComposite)
+        #print ("TESTING controlQubitsComposite = ", controlQubitsComposite) # TESTING
         #print ("TESTING targetQubitAddress = ", targetQubitAddress)
+        # NOTE: controlQubitsComposite will have a '1' in every bit position for which there are control qubits
+        #  For example, for a given gate time, a single control in qubit 0 will have a controlQubitsComposite = 0b1
         for rowPositionZeroBased in range(N): # looping from 0 to N-1
+            #print("rowPositionZeroBased = ",rowPositionZeroBased) # TESTING 4-16-2022
             if (rowPositionZeroBased & controlQubitsComposite == controlQubitsComposite):
+                #print("rowPositionZeroBased & controlQubitsComposite == controlQubitsComposite was true for rowPositionZerobased = ",rowPositionZeroBased) # TESTING
                 # the address of this row has all of its control qubits (zero-based) set, so it's a modified row
                 # invert the bit position of the targetQubit (zero-based) in this row's address
                 gateMatrix[ [np.bitwise_xor( rowPositionZeroBased , targetQubitAddress )] , [rowPositionZeroBased] ] = 1
@@ -105,3 +127,26 @@ def controlled_gate_generator(gateType, numberOfQubits , controlQubits , targetQ
         #print("cz gate =",gateMatrix)
         # all rows have been processed
         return gateMatrix # return the cz matrix
+    elif (gateType[0:1] == "p") & (len(gateType) > 1):
+# user requested a cpx (controlled user-defined) phase gate
+        controlAndTargetQubitsComposite = 0
+        for cQ in controlQubits:
+            controlAndTargetQubitsComposite |= 1<<(cQ) # 'or-in' all the control qubit positions
+        controlAndTargetQubitsComposite |= 1 << (targetQubit) # finally, 'or-in' the target qubit position
+        
+        for rowPositionZeroBased in range(N): # looping from 0 to N-1
+            if(rowPositionZeroBased & controlAndTargetQubitsComposite == controlAndTargetQubitsComposite):
+                
+                phasePiDivisor = int(str(gateType[1:len(gateType)]))
+                #print ("phasePiDivisor for the cpx gate = ",phasePiDivisor) # TESTING
+                phase = cmath.exp(1j * math.pi/phasePiDivisor)
+                #print ("phase for the cpx gate = \n",phase) # TESTING                
+                gateMatrix[ [rowPositionZeroBased] , [rowPositionZeroBased] ] = phase
+            else:
+                gateMatrix[ [rowPositionZeroBased] , [rowPositionZeroBased] ] = 1
+        #print("cpx gate =",gateMatrix) # TESTING
+        # all rows have been processed
+        return gateMatrix # return the cpx matrix
+    
+    else:
+        return None
